@@ -1,0 +1,17 @@
+{
+  "name": "jupitered-scraper",
+  "version": "1.0.0",
+  "description": "Web scraper for JupiterEd parent portal to retrieve student grades",
+  "main": "scraper.js",
+  "type": "module",
+  "scripts": {
+    "start": "node scraper.js"
+  },
+  "keywords": ["scraper", "jupitered", "grades"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer": "^22.0.0",
+    "dotenv": "^16.4.0"
+  }
+}
