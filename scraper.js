@@ -156,84 +156,131 @@ class JupiterEdScraper {
       console.log('Grades page HTML saved to debug-grades-page.html');
     }
 
-    // Parse JupiterEd Report Card table
-    // Structure: Class | Teacher | S1MP1 | S1 | YR
-    const grades = await this.page.evaluate(() => {
-      const results = [];
+    // Parse JupiterEd Report Card table dynamically
+    // Structure: Class | Teacher | [various grade columns like S1MP1, S1MP2, S1, YR, etc.]
+    const gradesData = await this.page.evaluate(() => {
+      // Find the header row (has class "blue topline", not "topbotline")
+      const headerRow = document.querySelector('tr.blue.topline');
+      if (!headerRow) {
+        return { headers: [], grades: [] };
+      }
 
-      // Find all table rows with class "topbotline" (actual grade rows)
-      const rows = document.querySelectorAll('tr.topbotline');
+      const headerCells = headerRow.querySelectorAll('td');
+      const headers = [];
 
-      for (const row of rows) {
+      // Extract all header names, accounting for colspan
+      for (let i = 0; i < headerCells.length; i++) {
+        let headerText = headerCells[i].textContent.trim();
+        // Remove nbsp and extra whitespace
+        headerText = headerText.replace(/&nbsp;/g, '').trim();
+
+        // Check if this cell has colspan
+        const colspan = parseInt(headerCells[i].getAttribute('colspan')) || 1;
+
+        // Add empty strings for colspan > 1 to maintain alignment
+        if (colspan > 1) {
+          for (let c = 0; c < colspan; c++) {
+            headers.push('');
+          }
+        } else {
+          headers.push(headerText);
+        }
+      }
+
+      // Find all grade rows (ALL rows with class "topbotline" are data rows)
+      const allRows = document.querySelectorAll('tr.topbotline');
+      const grades = [];
+
+      for (let i = 0; i < allRows.length; i++) {
+        const row = allRows[i];
         const cells = row.querySelectorAll('td');
 
-        // Need at least 5 cells: class, teacher, marking period, semester, year
-        if (cells.length >= 5) {
+        if (cells.length >= 3) {
           const className = cells[0].textContent.trim();
           const teacher = cells[1].textContent.trim();
 
-          // Get grades from S1 (Semester 1) and YR (Year) columns
-          let gradeS1 = cells[3].textContent.trim().replace(/\s+/g, ' ');
-          let gradeYR = cells[4].textContent.trim().replace(/\s+/g, ' ');
-
-          // Clean up grades (remove nbsp and extra spaces)
-          gradeS1 = gradeS1.replace(/&nbsp;/g, '').trim() || '-';
-          gradeYR = gradeYR.replace(/&nbsp;/g, '').trim() || '-';
-
-          // Skip header rows
-          if (className && !className.toLowerCase().includes('colspan')) {
-            results.push({
+          // Skip if empty
+          if (className) {
+            const gradeRow = {
               className,
-              s1: gradeS1,
-              yr: gradeYR,
-              teacher
-            });
+              teacher,
+              grades: {}
+            };
+
+            // Extract all grade columns (starting from column 2)
+            for (let j = 2; j < cells.length; j++) {
+              let gradeValue = cells[j].textContent.trim().replace(/\s+/g, ' ');
+              gradeValue = gradeValue.replace(/&nbsp;/g, '').trim() || '-';
+
+              // Use the header name as the key
+              // Header has colspan=2 for first two columns, so headers[j] maps correctly
+              const columnName = headers[j] || `Col${j}`;
+              gradeRow.grades[columnName] = gradeValue;
+            }
+
+            grades.push(gradeRow);
           }
         }
       }
 
-      return results;
+      return { headers: headers.slice(2), grades };
     });
 
-    return grades;
+    return gradesData;
   }
 
-  formatTable(grades) {
-    if (!grades || grades.length === 0) {
+  formatTable(gradesData) {
+    if (!gradesData || !gradesData.grades || gradesData.grades.length === 0) {
       return 'No grades found';
     }
 
+    const { headers, grades } = gradesData;
+
     // If we got debug output, show it
-    if (grades[0].debug) {
+    if (grades[0] && grades[0].debug) {
       return 'DEBUG: Could not parse grades automatically. Page content:\n' + grades[0].text;
     }
 
-    // Calculate column widths
+    // Calculate column widths for Class Name
     const classHeader = 'Class Name';
-    const s1Header = 'S1';
-    const yrHeader = 'YR';
-
     const maxClassLength = Math.max(
       classHeader.length,
       ...grades.map(g => g.className.length)
     );
-    const maxS1Length = Math.max(
-      s1Header.length,
-      ...grades.map(g => g.s1.length)
-    );
-    const maxYRLength = Math.max(
-      yrHeader.length,
-      ...grades.map(g => g.yr.length)
-    );
 
-    // Build table
-    const separator = '+' + '-'.repeat(maxClassLength + 2) + '+' + '-'.repeat(maxS1Length + 2) + '+' + '-'.repeat(maxYRLength + 2) + '+';
-    const header = '| ' + classHeader.padEnd(maxClassLength) + ' | ' + s1Header.padEnd(maxS1Length) + ' | ' + yrHeader.padEnd(maxYRLength) + ' |';
+    // Calculate column widths for each grade column
+    const gradeColumnWidths = {};
+    for (const header of headers) {
+      const maxWidth = Math.max(
+        header.length,
+        ...grades.map(g => (g.grades[header] || '-').length)
+      );
+      gradeColumnWidths[header] = maxWidth;
+    }
 
-    let table = separator + '\n' + header + '\n' + separator + '\n';
+    // Build separator
+    let separator = '+' + '-'.repeat(maxClassLength + 2) + '+';
+    for (const header of headers) {
+      separator += '-'.repeat(gradeColumnWidths[header] + 2) + '+';
+    }
 
+    // Build header row
+    let headerRow = '| ' + classHeader.padEnd(maxClassLength) + ' |';
+    for (const header of headers) {
+      headerRow += ' ' + header.padEnd(gradeColumnWidths[header]) + ' |';
+    }
+
+    // Start building table
+    let table = separator + '\n' + headerRow + '\n' + separator + '\n';
+
+    // Add grade rows
     for (const grade of grades) {
-      table += '| ' + grade.className.padEnd(maxClassLength) + ' | ' + grade.s1.padEnd(maxS1Length) + ' | ' + grade.yr.padEnd(maxYRLength) + ' |\n';
+      let row = '| ' + grade.className.padEnd(maxClassLength) + ' |';
+      for (const header of headers) {
+        const gradeValue = grade.grades[header] || '-';
+        row += ' ' + gradeValue.padEnd(gradeColumnWidths[header]) + ' |';
+      }
+      table += row + '\n';
     }
 
     table += separator;
