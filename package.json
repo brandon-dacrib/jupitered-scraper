@@ -7,11 +7,15 @@
   "scripts": {
     "start": "node scraper.js"
   },
-  "keywords": ["scraper", "jupitered", "grades"],
+  "keywords": [
+    "scraper",
+    "jupitered",
+    "grades"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "puppeteer": "^22.0.0",
-    "dotenv": "^16.4.0"
+    "dotenv": "^16.4.0",
+    "puppeteer": "^25.18.1"
   }
 }
