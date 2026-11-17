@@ -187,8 +187,9 @@ class JupiterEdScraper {
         }
       }
 
-      // Find all grade rows (ALL rows with class "topbotline" are data rows)
-      const allRows = document.querySelectorAll('tr.topbotline');
+      // Find all grade rows - use multiple selectors since JupiterEd uses
+      // different border classes (topline, botline, topbotline) on different rows
+      const allRows = document.querySelectorAll('tr.topline:not(.blue), tr.botline, tr.topbotline');
       const grades = [];
 
       for (let i = 0; i < allRows.length; i++) {
